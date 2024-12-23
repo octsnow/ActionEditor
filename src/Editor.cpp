@@ -15,10 +15,10 @@
 
 // palette
 #define PALETTE_W 0.2f
-#define PALETTE_BLOCK_COL 3
-#define PALETTE_BLOCK_SPACE 0.2f // 1.0f - same to size of block
-#define PALETTE_BLOCK_PADLEFT 0.5f // 1.0f - same to size of block
-#define PALETTE_BLOCK_PADRIGHT 0.5f // 1.0f - same to size of block
+#define PALETTE_BLOCK_COL 6
+#define PALETTE_BLOCK_SPACE 0.2f // if is 1.0f, same to size of block
+#define PALETTE_BLOCK_PADLEFT 0.5f // if is 1.0f, same to size of block
+#define PALETTE_BLOCK_PADRIGHT 0.5f // if is 1.0f, same to size of block
 
 using namespace std;
 
@@ -38,6 +38,8 @@ namespace {
     vector<string> gFilePaths = {
         "images/blocks/stone.bmp",
         "images/blocks/soil.bmp",
+        "images/blocks/conveyor_left.bmp",
+        "images/blocks/conveyor_right.bmp",
         "images/gimmicks/goal1.bmp",
     };
     vector<GHandle> gBlockGHandles;
