@@ -1,5 +1,6 @@
 #include "Editor.hpp"
 
+
 #ifdef DEBUG
 #pragma comment(lib, "opencv_world455d.lib")
 
@@ -7,6 +8,19 @@
 #pragma comment(lib, "opencv_world455.lib")
 
 #endif
+
+
+#ifdef OCT_DEBUG
+#pragma comment(lib, "oct_game_d.lib)
+
+#else
+#pragma comment(lib, "oct_game.lib")
+
+#endif
+
+#pragma comment(lib, "OpenAL32.lib")
+#pragma comment(lib, "oct_wav.lib")
+#pragma comment(lib, "oct_binary.lib")
 
 #define WINDOW_W 1920
 #define WINDOW_H 1080

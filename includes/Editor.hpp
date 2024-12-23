@@ -1,20 +1,9 @@
 #pragma once
 
-#include "../OctGame/OctGame.hpp"
+#include <stdint.h>
 
 #pragma comment(lib, "User32.lib")
 #pragma comment(lib, "Comdlg32.lib")
-
-typedef uint8_t BlockID;
-
-const BlockID BID_NONE = 0;
-const BlockID BID_STONE = 1;
-const BlockID BID_DIRT = 2;
-
-struct Block {
-    BlockID bid;
-    GHandle gh;
-};
 
 class Editor {
 public:

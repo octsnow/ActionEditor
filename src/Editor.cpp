@@ -4,7 +4,10 @@
 #include <commdlg.h>
 #include <string>
 #include <fstream>
-#include <tuple>
+
+#include "OctGame.hpp"
+#include "ImageList.hpp"
+#include "BlockId.hpp"
 
 // block panel
 #define BPANEL_BLOCK_SIZE 8
@@ -20,31 +23,157 @@
 using namespace std;
 
 namespace {
-    void ShowFileDialog();
-
     OctGame* gPGame = nullptr;
-    unsigned int gStageWidth = 0;
-    unsigned int gStageHeight = 0;
-    BlockID* gStage = nullptr;
+    unsigned char gStageWidth = 0;
+    unsigned char gStageHeight = 0;
+    BLOCK_ID* gStage = nullptr;
     unsigned int gX = 0;
     unsigned int gY = 0;
     unsigned int gWidth = 0;
     unsigned int gHeight = 0;
     unsigned int gSelectedBlock = 0;
-    BlockID gCurrentBlock = BID_STONE;
+    BLOCK_ID gCurrentBlockType = BID_STONE;
+    int gPressedMouseButton;
 
-    vector<tuple<string, BlockID>> gFilePaths = {
-        {"images/blocks/stone.bmp", BID_STONE},
-        {"images/blocks/soil.bmp", BID_DIRT},
+    vector<string> gFilePaths = {
+        "images/blocks/stone.bmp",
+        "images/blocks/soil.bmp",
+        "images/gimmicks/goal1.bmp",
     };
-    vector<Block> gBlockList;
+    vector<GHandle> gBlockGHandles;
+
+    void ShowOpenFileDialog(TCHAR *szFileName) {
+        OPENFILENAME oFileName;
+
+        ZeroMemory(szFileName, sizeof(TCHAR) * 512);
+        ZeroMemory(&oFileName, sizeof(OPENFILENAME));
+        oFileName.lStructSize = sizeof(OPENFILENAME);
+        oFileName.hwndOwner = gPGame->GetWindowHandle();
+        oFileName.lpstrFilter = TEXT("Stage Files\0*.stg");
+        oFileName.nFilterIndex = 1;
+        oFileName.lpstrFile = szFileName;
+        oFileName.nMaxFile = 512;
+        oFileName.lpstrDefExt = TEXT("stg");
+        oFileName.nMaxFileTitle = 0;
+        oFileName.lpstrFileTitle = NULL;
+        oFileName.lpstrTitle = NULL;
+
+        GetOpenFileName(&oFileName);
+    }
+
+    void ShowSaveFileDialog(TCHAR *szFileName) {
+        OPENFILENAME oFileName;
+
+        ZeroMemory(szFileName, sizeof(TCHAR) * 512);
+        ZeroMemory(&oFileName, sizeof(OPENFILENAME));
+        oFileName.lStructSize = sizeof(OPENFILENAME);
+        oFileName.hwndOwner = gPGame->GetWindowHandle();
+        oFileName.lpstrFilter = TEXT("Stage Files\0*.stg");
+        oFileName.nFilterIndex = 1;
+        oFileName.lpstrFile = szFileName;
+        oFileName.nMaxFile = 512;
+        oFileName.lpstrDefExt = TEXT("stg");
+        oFileName.nMaxFileTitle = 0;
+        oFileName.lpstrFileTitle = NULL;
+        oFileName.lpstrTitle = NULL;
+        //oFileName.Flags = OFN_EXPLORER;
+
+        GetSaveFileName(&oFileName);
+    }
+
+    void WriteStageFile(TCHAR *filename) {
+#ifdef UNICODE
+        vector<char> buffer;
+        int size = WideCharToMultiByte(CP_UTF8, 0, filename, -1, NULL, 0, NULL, NULL);
+        if(size > 0) {
+            buffer.resize(size);
+            WideCharToMultiByte(CP_UTF8, 0, filename, -1, static_cast<BYTE*>(&buffer[0]), buffer.size(), NULL, NULL);
+        } else {
+            return;
+        }
+
+        string str(&buffer[0]);
+#else
+        string str(filename);
+#endif
+
+        ofstream ofs(str, ios::out | ios::binary | ios::trunc);
+
+        if(!ofs) {
+            cout << "error: faild to saving stage file" << endl;
+            printf("%s", str.c_str());
+            return;
+        }
+
+        unsigned char* buffer = new unsigned char[gStageWidth * gStageHeight];
+        ofs.write((char*)&gStageWidth, sizeof(char));
+        ofs.write((char*)&gStageHeight, sizeof(char));
+
+        for(int row = 0; row < gStageHeight; row++) {
+            for(int col = 0; col < gStageWidth ; col++) {
+                int i = row * gStageWidth + col;
+                buffer[i] = (unsigned int)gStage[i] > 255 ? 255 : gStage[i];
+            }
+        }
+        ofs.write((char*)buffer, gStageWidth * gStageHeight);
+        ofs.close();
+
+        delete[] buffer;
+    }
+
+    void LoadStageFile(TCHAR *filename) {
+#ifdef UNICODE
+        vector<char> buffer;
+        int size = WideCharToMultiByte(CP_UTF8, 0, filename, -1, NULL, 0, NULL, NULL);
+        if(size > 0) {
+            buffer.resize(size);
+            WideCharToMultiByte(CP_UTF8, 0, filename, -1, static_cast<BYTE*>(&buffer[0]), buffer.size(), NULL, NULL);
+        } else {
+            return;
+        }
+
+        string str(&buffer[0]);
+#else
+        string str(filename);
+#endif
+
+        ifstream ifs(str, ios::in | ios::binary);
+
+        if(!ifs) {
+            cout << "error: faild to saving stage file" << endl;
+            return;
+        }
+
+        unsigned char width, height;
+        ifs.read((char*)&width, sizeof(char));
+        ifs.read((char*)&height, sizeof(char));
+
+        gStageWidth = width;
+        gStageHeight = height;
+
+        if(gStage != nullptr) {
+            delete[] gStage;
+        }
+
+        gStage = new BLOCK_ID[gStageWidth * gStageHeight];
+
+        unsigned char* buffer = new unsigned char[gStageWidth * gStageHeight];
+        ifs.read((char*)buffer, gStageWidth * gStageHeight);
+        ifs.close();
+
+        for(int row = 0; row < gStageHeight; row++) {
+            for(int col = 0; col < gStageWidth; col++) {
+                gStage[row * gStageWidth + col] = (BLOCK_ID)buffer[row * gStageWidth + col];
+            }
+        }
+
+        delete[] buffer;
+    }
 
     void LoadImages() {
-        if(!gBlockList.empty()) return;
+        if(!gBlockGHandles.empty()) return;
 
-        for(auto bInfo : gFilePaths) {
-            string path = get<0>(bInfo);
-            BlockID id = get<1>(bInfo);
+        for(string path : gFilePaths) {
             GHandle gh = gPGame->LoadImageFile(path, true);
 
             if(gh == ILFAILED) {
@@ -52,11 +181,15 @@ namespace {
                 return;
             }
 
-            Block block;
-            block.gh = gh;
-            block.bid = id;
-            gBlockList.push_back(block);
+            gBlockGHandles.push_back(gh);
         }
+    }
+
+    GHandle GetBlockGHandle(BLOCK_ID blockId) {
+        if(!(BLOCK_ID::BID_NONE < blockId && blockId < BLOCK_ID::BID_NUM)) {
+            return 0;
+        }
+        return gBlockGHandles[blockId - 1];
     }
 
     void DrawBlockPanel() {
@@ -77,25 +210,16 @@ namespace {
                 unsigned int bx = x * bsize - (gX % BPANEL_BLOCK_SIZE) * (blockPanelWidth / static_cast<float>(BPANEL_BLOCK_COL * BPANEL_BLOCK_SIZE));
                 unsigned int by = y * bsize - (gY % BPANEL_BLOCK_SIZE) * (blockPanelWidth / static_cast<float>(BPANEL_BLOCK_COL * BPANEL_BLOCK_SIZE));
                 unsigned int index = (y + sy) * gStageWidth + (x + sx);
-                int color = 0;
 
-                switch(gStage[index]) {
-                case BID_NONE:
-                    color = 0x000000;
-                    break;
-                case BID_STONE:
-                    color = 0x888888;
-                    break;
-                case BID_DIRT:
-                    color = 0xAA6004;
-                    break;
+                if(gStage[index] == BLOCK_ID::BID_NONE) {
+                    gPGame->DrawBox(bx, by, bx + bsize, by + bsize, 0x888888, false);
+                } else {
+                    gPGame->DrawResizedImage(GetBlockGHandle(gStage[index]), bx, by, bx + bsize, by + bsize, true);
                 }
-                gPGame->DrawBox(bx, by, bx + bsize, by + bsize, color, true);
 
                 if(index == gSelectedBlock) {
                     gPGame->DrawBox(bx, by, bx + bsize, by + bsize, 0xFFFFFF, true, 0.5);
                 }
-                gPGame->DrawBox(bx, by, bx + bsize, by + bsize, 0x888888, false);
             }
         }
     }
@@ -109,12 +233,12 @@ namespace {
 
         int sX = pX + blockSize * PALETTE_BLOCK_PADLEFT;
         int sY = pY + blockSize * PALETTE_BLOCK_PADRIGHT;
-        for(int i = 0; i < gBlockList.size(); i++) {
-            int x = sX + i % PALETTE_BLOCK_COL * static_cast<int>((1 + PALETTE_BLOCK_SPACE) * blockSize);
-            int y = sY + i / PALETTE_BLOCK_COL * static_cast<int>((1 + PALETTE_BLOCK_SPACE) * blockSize);
-            Block block = gBlockList[i];
+        for(int i = 0; i < gBlockGHandles.size(); i++) {
+            int x = sX + i % PALETTE_BLOCK_COL * (int)((1 + PALETTE_BLOCK_SPACE) * blockSize);
+            int y = sY + i / PALETTE_BLOCK_COL * (int)((1 + PALETTE_BLOCK_SPACE) * blockSize);
+            GHandle gh = gBlockGHandles[i];
 
-            gPGame->DrawImage(block.gh, x, y);
+            gPGame->DrawImage(gh, x, y, true);
         }
     }
 
@@ -144,9 +268,21 @@ namespace {
                 gX++;
             }
         }
-        if(gPGame->IsDown('p')) {
-            ShowFileDialog();
+        if(gPGame->IsDown('o')) { // open file
+            TCHAR szFileName[512];
+            ShowOpenFileDialog(szFileName);
+            if(szFileName[0] != '\0') {
+                LoadStageFile(szFileName);
+            }
         }
+        if(gPGame->IsDown('p')) { // save file
+            TCHAR szFileName[512];
+            ShowSaveFileDialog(szFileName);
+            if(szFileName[0] != '\0') {
+                WriteStageFile(szFileName);
+            }
+        }
+        
     }
 
     void Update() {
@@ -155,11 +291,11 @@ namespace {
         gPGame->Update();
     }
 
-    void SetCurrentBlock(BlockID bid) {
-        gCurrentBlock  = bid;
+    void SetCurrentBlock(BLOCK_ID bid) {
+        gCurrentBlockType  = bid;
     }
 
-    void SetBlock(unsigned int index, BlockID bid) {
+    void PutBlock(unsigned int index, BLOCK_ID bid) {
         if(index >= gStageWidth * gStageHeight) return;
 
         gStage[index] = bid;
@@ -218,12 +354,18 @@ namespace {
 
     }
 
-    void ClickBlockPanel(int x, int y) {
+    void ClickBlockPanel(int button, int x, int y) {
         if(x > (gWidth * (1 - PALETTE_W))){
             return;
         }
+
         MoveOnBlockPanel(x, y);
-        SetBlock(gSelectedBlock, gCurrentBlock);
+
+        if(button == GLUT_LEFT_BUTTON) {
+            PutBlock(gSelectedBlock, gCurrentBlockType);
+        } else if(button == GLUT_RIGHT_BUTTON) {
+            PutBlock(gSelectedBlock, BID_NONE);
+        }
     }
 
     void ClickPalette(int x, int y) {
@@ -238,19 +380,19 @@ namespace {
         x -= bpW + blockSize * PALETTE_BLOCK_PADLEFT;
         y -= blockSize * PALETTE_BLOCK_PADRIGHT;
 
-        int i = y / (blockSize + blockSpace) * PALETTE_BLOCK_COL + x / (blockSize + blockSpace);
+        int i = y / (blockSize + blockSpace) * PALETTE_BLOCK_COL + x / (blockSize + blockSpace) + 1;
 
-        if(i >= gBlockList.size()) {
+        if(i >= BLOCK_ID::BID_NUM) {
             return;
         }
 
-        Block block = gBlockList[i];
-        gCurrentBlock = block.bid;
+        gCurrentBlockType = (BLOCK_ID)i;
     }
 
     void Mouse(int button, int state, int x, int y) {
-        if(button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
-            ClickBlockPanel(x, y);
+        gPressedMouseButton = button;
+        if(state == GLUT_DOWN) {
+            ClickBlockPanel(button, x, y);
             ClickPalette(x, y);
         }
     }
@@ -261,60 +403,10 @@ namespace {
     }
 
     void MouseDrag(int x, int y) {
-        ClickBlockPanel(x, y);
+        ClickBlockPanel(gPressedMouseButton, x, y);
         ClickPalette(x, y);
     }
 
-    void WriteStageFile(TCHAR* filename) {
-#ifdef UNICODE
-        vector<char> buffer;
-        int size = WideCharToMultiByte(CP_UTF8, 0, filename, -1, NULL, 0, NULL, NULL);
-        if(size > 0) {
-            buffer.resize(size);
-            WideCharToMultiByte(CP_UTF8, 0, filename, -1, static_cast<BYTE*>(&buffer[0]), buffer.size(), NULL, NULL);
-        } else {
-            return;
-        }
-
-        string str(&buffer[0]);
-#else
-        string str(filename);
-#endif
-
-        ofstream ofs(str, ios::out | ios::binary | ios::trunc);
-
-        if(!ofs) {
-            cout << "error: faild to saving stage file" << endl;
-            return;
-        }
-
-        unsigned char width = gStageWidth, height = gStageHeight;
-        ofs.write((char*)&width, sizeof(char));
-        ofs.write((char*)&height, sizeof(char));
-        ofs.write((char*)gStage, sizeof(BlockID) * gStageWidth * gStageHeight);
-        ofs.close();
-    }
-
-    void ShowFileDialog() {
-        TCHAR szFileName[512];
-        OPENFILENAME oFileName;
-
-        ZeroMemory(szFileName, sizeof(TCHAR) * 512);
-        ZeroMemory(&oFileName, sizeof(OPENFILENAME));
-        oFileName.lStructSize = sizeof(OPENFILENAME);
-        oFileName.hwndOwner = gPGame->GetWindowHandle();
-        oFileName.lpstrFilter = TEXT("Stage Files\0*.stg");
-        oFileName.nFilterIndex = 1;
-        oFileName.lpstrFile = szFileName;
-        oFileName.nMaxFile = 512;
-        oFileName.lpstrDefExt = TEXT("stg");
-        oFileName.nMaxFileTitle = 0;
-        oFileName.lpstrFileTitle = NULL;
-        oFileName.lpstrTitle = NULL;
-
-        GetOpenFileName(&oFileName);
-        WriteStageFile(szFileName);
-    }
 }
 
 Editor::Editor(int width, int height) {
@@ -353,7 +445,7 @@ void Editor::Start(int* argc, char** argv) {
 
 void Editor::Term() {
     if(gStage != nullptr) {
-        delete gStage;
+        delete[] gStage;
     }
     gPGame->Destroy();
 }
@@ -363,10 +455,10 @@ void Editor:: SetStageSize(unsigned int width, unsigned int height) {
     gStageHeight = height;
 
     if(gStage != nullptr) {
-        delete gStage;
+        delete[] gStage;
     }
 
-    gStage = new BlockID[width * height];
+    gStage = new BLOCK_ID[width * height];
     this->ResetStage();
 }
 
