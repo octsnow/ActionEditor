@@ -41,6 +41,7 @@ namespace {
         "images/blocks/conveyor_left.bmp",
         "images/blocks/conveyor_right.bmp",
         "images/gimmicks/goal1.bmp",
+        "images/gimmicks/leaser.bmp",
     };
     vector<GHandle> gBlockGHandles;
 

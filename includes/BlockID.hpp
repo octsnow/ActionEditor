@@ -11,6 +11,7 @@ enum BLOCK_ID {
 
     // gimmicks
     BID_GOAL,
+    BID_LEASER,
 
     BID_NUM,
 };
